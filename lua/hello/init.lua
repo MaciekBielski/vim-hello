@@ -16,16 +16,17 @@ local function log(msg, prefix)
 end
 
 local api = vim.api
-local inner_buff, inner_opts
+local inner_buf, inner_opts, inner_win
+local inner_bufnm = 'HelloFloat#'
 
 local function set_banner(text)
     local width = api.nvim_win_get_width(0)
     log {inner_buf}
-    local bufname = api.nvim_buf_get_name(inner_buff)
+    local bufname = api.nvim_buf_get_name(inner_buf)
     local offset1 = math.floor(width/2) - math.floor(string.len(bufname)/2)
     local offset2 = math.floor(width/2) - math.floor(string.len(text)/2)
 
-    api.nvim_buf_set_lines(inner_buff, 0, -1, false, {
+    api.nvim_buf_set_lines(inner_buf, 0, -1, false, {
         string.rep(' ', offset1) .. bufname,
         string.rep(' ', offset2) .. text,
         ''
@@ -45,14 +46,22 @@ local function update_view()
     for k,v in pairs(data) do
         data[k] = '\t' .. data[k]
     end
-    api.nvim_buf_set_lines(inner_buff, 3, -1, false, data)
+    api.nvim_buf_set_lines(inner_buf, 3, -1, false, data)
 
     -- EXIT
     -- api.nvim_buf_set_option(inner_buf, 'modifiable', false)
 end
 
 
-local function open_float_window()
+local function del_float_window()
+    log { 'BufUnload' }
+    api.nvim_buf_delete(inner_buf, { force = true, unload = false})
+    log { api.nvim_list_bufs() }
+    -- api.nvim_win_close(inner_win, false)
+end
+
+
+local function make_float_window()
 
     -- local editor_width = api.nvim_get_option('columns')
     local editor_width = vim.o['columns']
@@ -71,13 +80,14 @@ local function open_float_window()
     --     start_y          = start_y,
     -- }
 
-    inner_buff = api.nvim_create_buf(false, true)
-    api.nvim_buf_set_name(inner_buff, 'HelloFloat#' .. inner_buff)
-    -- api.nvim_buf_set_option(inner_buff, 'buftype', 'nofile')
+    inner_buf = api.nvim_create_buf(false, true)
+    local buf_name = inner_bufnm .. inner_buf
+    api.nvim_buf_set_name(inner_buf, buf_name)
+    -- api.nvim_buf_set_option(inner_buf, 'buftype', 'nofile')
     -- shorter:
-    vim.bo[inner_buff].buftype = nofile
+    vim.bo[inner_buf].buftype = nofile
     -- TODO: try also wipe
-    vim.bo[inner_buff].bufhidden = hide
+    vim.bo[inner_buf].bufhidden = hide -- hide, unload, delete, wipe
 
     inner_opts = {
         style = 'minimal',
@@ -89,32 +99,31 @@ local function open_float_window()
         row = start_y,
         zindex = 10,
     }
-    inner_win = api.nvim_open_win(inner_buff, true, inner_opts)
+
+    api.nvim_create_autocmd({"VimLeave"}, { pattern = {'*'},
+                                           callback = function() del_float_window() end })
+
+    log {'foobar'}
 end
 
 
-local function reopen_float_window()
-    inner_win = api.nvim_open_win(inner_buff, true, inner_opts)
+local function show_float_window()
+    if inner_buf == nil or api.nvim_buf_is_loaded(inner_buf) == false then
+        make_float_window()
+    end
+    inner_win = api.nvim_open_win(inner_buf, true, inner_opts)
 end
 
-
-local function close_float_window()
-    local buf_info = api.nvim_call_function('getbufinfo', {inner_buff})[1]
-    buf_info.changed = 0
-    log(buf_info)
-    -- TODO: Finish from here
-end
 
 local function run()
-    open_float_window()
-    update_view()
+    show_float_window()
+    -- update_view()
 end
 
 return {
     run = run,
-    open_float_window = open_float_window,
-    reopen_float_window = reopen_float_window,
-    close_float_window = close_float_window,
+    show_float_window = show_float_window,
+    del_float_window = del_float_window,
 --     -- export other functions for debug too
 --     -- on_complete_lsp = on_complete_lsp,
 }
